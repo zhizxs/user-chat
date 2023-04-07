@@ -122,18 +122,9 @@ if (
 async function getUserCount() {
   // 读取缓存手机号
   const userPhone = localStorage.getItem('C-USER_PHONE')
-  // const devicePoint
-
-  // const visitorData = await this.$fpjs.getVisitorData({
-  //       extendedResult: true
-  //     });
-
-  // if () {
-
+  const devicePoint = localStorage.getItem('C-USER_FINGER')
   const res = await cloud.invoke("get-count", { phone: userPhone, deviceid: devicePoint });
   // 手机号需要后台手动添加到数据库 并且和第一次绑定的设备一致 设备指纹
-
-
   totalCount.value = res.total
   sendCount.value = res.send
 }

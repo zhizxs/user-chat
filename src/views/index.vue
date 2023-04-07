@@ -290,7 +290,7 @@ async function send() {
         setScreen();
       },
     }).then((res) => {
-      if (!res.ok) {
+      if (res.ok === false) {
         loading.value = false;
         list.value.push({
           text: res.data,

@@ -1,16 +1,26 @@
 <template>
   <div class="page">
-    <div class="user-fix fix-top">
-      <el-text class="mx-1" type="success">
+    <div class="user-fix fix-top" v-if="isLogin">
+      <!-- <el-text class="mx-1" type="success">
         已发送次数：{{ sendCount }}
         剩余次数：{{ totalCount - sendCount }}
-      </el-text>
+      </el-text> -->
       <el-button class="user-head-btn" type="primary" :icon="Refresh" @click="handlerResetConv">
-        重置会话</el-button>
+        重置</el-button>
+      <el-button v-if="loginRole == 'admin'" class="user-head-btn" type="success" :icon="Plus"
+        @click="dialogVisible = true">
+        管理</el-button>
     </div>
+    <el-card v-if="!isLogin" :class="['box-card', { 'box-card-mb': isMobile }]">
+      <el-text class="mx-1" type="info">
+        输入手机号码登录，体验chat-gpt功能
+      </el-text>
+      <el-input v-model="userPhone" placeholder="请输入手机号" />
+      <el-button class="user-head-btn marg-top" type="primary" :icon="User" @click="phoneLogin">
+        登陆</el-button>
+    </el-card>
     <!-- 页面消息列表 -->
-    <div id="myList">
-
+    <div id="myList" v-if="isLogin">
       <div v-show="item.text" :class="item.role === 'user' ? 'problemList' : 'answerList'" v-for="item in list">
         <img class="listImg" :src="item.avatar" alt="" />
         <div v-html="item.text" class="listText"></div>
@@ -25,7 +35,7 @@
     </div>
     <!-- ------------------------------------------------------ -->
     <!-- 输入框 -->
-    <div class="inputbox user-fix">
+    <div class="inputbox user-fix" v-if="isLogin">
       <el-input v-model="question" v-bind:readonly="loading" maxlength="1000" tabindex="0"
         :autosize="{ minRows: 1, maxRows: 5 }" type="textarea" :placeholder="placeholder" @keypress="handleEnter" />
       <!-- 发送按钮小飞机 -->
@@ -61,14 +71,25 @@
         </div>
       </div>
     </div>
+    <!-- 用户管理 -->
+    <el-dialog v-model="dialogVisible" title="用户管理" :width="isMobile ? '90%' : '30%'" :before-close="handlerAddClose">
+      <el-input v-model="addPhone" placeholder="请输入注册手机号" />
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <el-button type="warning" @click="removeUser">移除</el-button>
+          <el-button type="primary" @click="addUser">注册</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script  setup>
-import { ref, watch } from "vue";
+import { ref } from "vue";
 import { Cloud } from "laf-client-sdk";
 import { ElMessage } from "element-plus";
-import { CopyDocument, Refresh } from "@element-plus/icons-vue";
+import { CopyDocument, Refresh, Plus, User } from "@element-plus/icons-vue";
 // 将marked 引入
 import axios from "axios";
 import MarkdownIt from "markdown-it";
@@ -98,16 +119,25 @@ const parentMessageId = ref("");
 const loading = ref(false);
 //判断设备
 const isMobile = ref(false);
+// 弹窗
+const dialogVisible = ref(false);
 //输入框提示
 const placeholder = ref("输入你的指令");
 // 消息发送次数
-const totalCount = ref(0);
-const sendCount = ref(0);
+// const totalCount = ref(0);
+// const sendCount = ref(0);
+// 手机
+const userPhone = ref(localStorage.getItem('C-USER-PHONE') || '');
+const addPhone = ref('');
+const devicePoint = localStorage.getItem('C-USER_FINGER')
 
+// 登陆状态判断
+const isLogin = ref(false);
+const loginRole = ref(localStorage.getItem('C-USER-ROLE') || 'visit');
 // ======================= create =============================
 // 判断是否为移动设备
 if (
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Mobi/i.test(
     navigator.userAgent
   )
 ) {
@@ -116,29 +146,82 @@ if (
   placeholder.value = "输入你的指令（Shift + Enter = 换行,Enter = 发送）";
 }
 
+isLogin.value = userPhone.value ? true : false
+
 // ======================= function =============================
 
-// 获取剩余次数 以及 总次数
-async function getUserCount() {
-  // 读取缓存手机号
-  const userPhone = localStorage.getItem('C-USER_PHONE')
-  const devicePoint = localStorage.getItem('C-USER_FINGER')
-  const res = await cloud.invoke("get-count", { phone: userPhone, deviceid: devicePoint });
+// 移除账号
+async function removeUser() {
+  const res = await cloud.invoke("chat-user-remove", { phone: addPhone.value, deviceid: devicePoint });
+  if (res.ok) {
+    dialogVisible.value = false
+    ElMessage({
+      message: res.data,
+      offset: 240,
+      type: 'warning',
+    })
+  }
+}
+
+// 增加用户
+async function addUser() {
+  dialogVisible.value = false
+  if (!addPhone.value) {
+    ElMessage({
+      message: '手机不能为空！',
+      offset: 240,
+      type: 'warning',
+    })
+    return
+  }
+  const res = await cloud.invoke("chat-add-user", { phone: addPhone.value, deviceid: devicePoint });
   // 手机号需要后台手动添加到数据库 并且和第一次绑定的设备一致 设备指纹
-  totalCount.value = res.total
-  sendCount.value = res.send
+  // totalCount.value = res.total
+  // sendCount.value = res.send
+  if (res.ok) {
+    ElMessage({
+      message: res.data,
+      offset: 240,
+      type: 'success',
+    })
+  }
+}
+
+// 手机号登录
+async function phoneLogin() {
+  if (!userPhone.value) {
+    ElMessage({
+      message: '请输入手机号登录',
+      offset: 240,
+      type: 'warning',
+    })
+    return
+  }
+  const res = await cloud.invoke("chat-login", { phone: userPhone.value, deviceid: devicePoint });
+  if (res.ok) {
+    isLogin.value = true
+    localStorage.setItem('C-USER-PHONE', userPhone.value)
+    localStorage.setItem('C-USER-ROLE', res.role)
+    loginRole.value = res.role // admin visit
+  } else {
+    ElMessage({
+      message: res.data,
+      offset: 240,
+      type: 'warning',
+    })
+  }
 }
 
 //发送消息
 async function send() {
-  if (sendCount.value == totalCount.value) {
-    ElMessage({
-      message: '次数已经用完！',
-      offset: 240,
-      type: 'warning',
-    })
-    return;
-  }
+  // if (sendCount.value == totalCount.value) {
+  //   ElMessage({
+  //     message: '次数已经用完！',
+  //     offset: 240,
+  //     type: 'warning',
+  //   })
+  //   return;
+  // }
   //判断是否回复
   if (loading.value) return;
   const message = question.value;
@@ -183,7 +266,11 @@ async function send() {
       role: "assistant"
     });
 
-    const obj = { message };
+    const obj = {
+      message: message,
+      phone: userPhone.value,
+      deviceid: devicePoint
+    };
     if (parentMessageId.value) obj.parentMessageId = parentMessageId.value;
 
     axios({
@@ -202,8 +289,15 @@ async function send() {
         loading.value = false;
         setScreen();
       },
-    }).then(() => {
-      sendCount.value++
+    }).then((res) => {
+      if (!res.ok) {
+        loading.value = false;
+        list.value.push({
+          text: res.data,
+          avatar: chatIcon,
+        });
+        setScreen();
+      }
     }).catch((err) => {
       loading.value = false;
       list.value.push({
@@ -244,6 +338,10 @@ function handlerResetConv() {
   parentMessageId.value = ''
 }
 
+function handlerAddClose() {
+  dialogVisible.value = false
+}
+
 // copy 复制
 function hanlderCopy(evt) {
   const plainText = evt.text.replace(/<[^>]+>/g, '');
@@ -265,7 +363,6 @@ function hanlderCopy(evt) {
   })
 }
 
-
 </script>
 <style scoped>
 .page {
@@ -273,10 +370,32 @@ function hanlderCopy(evt) {
   height: 100vh;
   overflow-y: auto;
   padding: 40px 0;
+  /* padding-bottom: 40px */
+}
+
+.marg-top {
+  margin-top: 40px;
 }
 
 .user-head-btn {
-  margin-left: 40px;
+  margin-left: 20px;
+}
+
+.box-card {
+  margin: 0 auto;
+  margin-top: 10%;
+  width: 30%;
+  text-align: center;
+}
+
+.box-card-mb {
+  width: 90%;
+  margin-top: 30%;
+}
+
+.mx-1 {
+  float: left;
+  margin-bottom: 20px;
 }
 
 .icon {
@@ -401,6 +520,8 @@ function hanlderCopy(evt) {
   cursor: pointer;
   opacity: 0.8;
 }
+
+.box-card {}
 
 .addin {
   margin: 10px 20px;
